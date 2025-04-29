@@ -136,59 +136,6 @@ class BondsParser:
             logging.error(f"Ошибка при поиске таблицы: {str(e)}")
             return None
             
-    def get_bond_details(self, bond_link):
-        """Получение дополнительной информации об облигации со страницы"""
-        try:
-            logging.info(f"Переход на страницу облигации: {bond_link}")
-            self.driver.get(bond_link)
-            
-            # Ждем загрузки страницы
-            self.wait.until(
-                EC.presence_of_element_located((By.TAG_NAME, "body"))
-            )
-            time.sleep(3)  # Ждем полной загрузки
-            
-            details = {
-                'ISIN': '',
-                'Статус': '',
-                'Есть_платежи': 'Нет',
-                'Есть_оферты': 'Нет'
-            }
-            
-            try:
-                # Ищем ISIN
-                isin_element = self.driver.find_element(By.XPATH, "//td[contains(text(), 'ISIN')]/following-sibling::td")
-                details['ISIN'] = isin_element.text.strip()
-            except Exception as e:
-                logging.warning(f"Не удалось найти ISIN: {str(e)}")
-                
-            try:
-                # Ищем статус
-                status_element = self.driver.find_element(By.XPATH, "//td[contains(text(), 'Статус')]/following-sibling::td")
-                details['Статус'] = status_element.text.strip()
-            except Exception as e:
-                logging.warning(f"Не удалось найти статус: {str(e)}")
-                
-            try:
-                # Проверяем наличие вкладки "Платежи"
-                payments_tab = self.driver.find_element(By.XPATH, "//a[contains(text(), 'Платежи')]")
-                details['Есть_платежи'] = 'Да'
-            except Exception:
-                details['Есть_платежи'] = 'Нет'
-                
-            try:
-                # Проверяем наличие вкладки "Оферты"
-                offers_tab = self.driver.find_element(By.XPATH, "//a[contains(text(), 'Оферты')]")
-                details['Есть_оферты'] = 'Да'
-            except Exception:
-                details['Есть_оферты'] = 'Нет'
-                
-            return details
-            
-        except Exception as e:
-            logging.error(f"Ошибка при получении деталей облигации: {str(e)}")
-            return None
-            
     def parse_page(self, page_number):
         """Парсинг одной страницы с облигациями"""
         try:
@@ -236,10 +183,11 @@ class BondsParser:
                         # Получаем ссылку на страницу облигации
                         bond_link = ""
                         try:
-                            link_element = bond_name_cell.find_element(By.TAG_NAME, "a")
+                            link_element = bond_name_cell.find_element(By.XPATH, ".//a[contains(@href, 'details')]")
                             bond_link = link_element.get_attribute("href")
                         except Exception as e:
                             logging.warning(f"Не удалось получить ссылку для облигации {bond_name}: {str(e)}")
+                            continue  # Пропускаем облигацию без ссылки
                         
                         # Проверяем, что это не служебная строка
                         if (bond_name and 
@@ -257,29 +205,18 @@ class BondsParser:
                                 "календарь"
                             ])):
                             
-                            # Получаем детали облигации
-                            bond_details = self.get_bond_details(bond_link) if bond_link else {}
-                            
-                            # Собираем данные об облигации
+                            # Собираем только базовую информацию об облигации
                             bond_data = {
                                 'Название': bond_name,
                                 'Дата размещения': cells[2].text.strip(),
                                 'Дата погашения': cells[3].text.strip(),
                                 'Объем': cells[4].text.strip(),
                                 'Валюта': cells[5].text.strip(),
-                                'Ссылка': bond_link,
-                                'ISIN': bond_details.get('ISIN', ''),
-                                'Статус': bond_details.get('Статус', ''),
-                                'Есть_платежи': bond_details.get('Есть_платежи', 'Нет'),
-                                'Есть_оферты': bond_details.get('Есть_оферты', 'Нет')
+                                'Ссылка': bond_link
                             }
                             
                             self.bonds_data.append(bond_data)
                             logging.info(f"Добавлена облигация: {bond_name}")
-                            
-                            # Возвращаемся на страницу со списком облигаций
-                            self.driver.get(url)
-                            time.sleep(3)
                                 
                     except Exception as e:
                         logging.error(f"Ошибка при парсинге строки: {str(e)}")
