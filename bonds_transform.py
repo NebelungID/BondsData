@@ -14,7 +14,7 @@ logging.basicConfig(
 def transform_data():
     try:
         # Чтение исходного файла
-        input_file = "./output/bonds_filter.csv"
+        input_file = "./output/bonds_with_ratings.csv"
         output_file = "./output/bonds_transformed.csv"
         
         logging.info(f"Чтение данных из файла {input_file}")
