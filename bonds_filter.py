@@ -17,7 +17,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('bonds_find.log', encoding='utf-8'),
+        logging.FileHandler('bonds_filter.log', encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
@@ -28,19 +28,8 @@ class BondsFilter:
         self.min_coupon_rate = 5.0  # Минимальный купонный доход в процентах
         self.input_file = "./output/bonds_data.csv"
         self.output_file = "./output/bonds_filter.csv"
-        self.log_file = "bonds_filter.log"
         self.site_base_url = "https://bonds.finam.ru"
         self.test_mode = test_mode  # Режим тестирования
-        
-        # Настройка логирования
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(self.log_file, encoding='utf-8'),
-                logging.StreamHandler()
-            ]
-        )
         
         # Инициализация WebDriver
         self.setup_driver()
@@ -83,29 +72,16 @@ class BondsFilter:
     def get_isin(self, soup):
         """Получение ISIN кода облигации"""
         try:
-            # Ищем div с классом "info"
             info_div = soup.find('div', class_='info')
-            logging.info(f"Найден div с классом info: {info_div is not None}")
-            
             if info_div:
-                # Ищем все td в div
                 tds = info_div.find_all('td')
-                logging.info(f"Найдено td элементов: {len(tds)}")
-                
                 for td in tds:
-                    # Проверяем, содержит ли td текст "ISIN код:"
                     if 'ISIN код:' in td.text:
-                        logging.info(f"Найден td с ISIN код: {td.text}")
-                        # Ищем span внутри найденного td
                         isin_span = td.find('span')
-                        logging.info(f"Найден span с ISIN: {isin_span is not None}")
-                        
                         if isin_span:
                             isin = isin_span.text.strip()
                             logging.info(f"Найден ISIN: {isin}")
                             return isin
-            
-            logging.warning("ISIN не найден")
             return None
         except Exception as e:
             logging.error(f"Ошибка при получении ISIN: {str(e)}")
@@ -114,13 +90,10 @@ class BondsFilter:
     def check_offer(self, soup):
         """Проверка наличия оферты"""
         try:
-            # Ищем элемент с текстом "Оферты"
             offer_element = soup.find('a', string='Оферты')
             if offer_element:
                 logging.info("Найдена оферта")
                 return True
-            
-            logging.info("Оферта не найдена")
             return False
         except Exception as e:
             logging.error(f"Ошибка при проверке оферты: {str(e)}")
@@ -129,43 +102,29 @@ class BondsFilter:
     def get_coupon_rate(self, soup):
         """Получение ставки купона"""
         try:
-            # Переход на вкладку "Платежи"
             payments_tab = self.wait.until(
                 EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'Платежи')]"))
             )
             payments_tab.click()
-            time.sleep(3)  # Ожидание загрузки страницы
+            time.sleep(3)
             
-            # Получение обновленного HTML
             page_source = self.driver.page_source
             soup = BeautifulSoup(page_source, 'html.parser')
             
-            # Поиск всех таблиц на странице
             tables = soup.find_all('table')
-            logging.info(f"Найдено таблиц на странице: {len(tables)}")
-            
-            # Поиск таблицы с купонными платежами
             for i, table in enumerate(tables):
-                # Проверяем заголовки таблицы
                 headers = table.find_all('th')
                 header_texts = [header.get_text(strip=True) for header in headers]
-                logging.info(f"Таблица {i+1} заголовки: {header_texts}")
                 
-                # Ищем таблицу с колонкой "Ставка" во втором уровне заголовков
                 if 'Купоны' in header_texts and 'Погашение' in header_texts:
-                    # Находим все строки таблицы
                     rows = table.find_all('tr')
-                    if len(rows) >= 2:  # Должны быть как минимум заголовки и одна строка данных
-                        # Получаем заголовки второго уровня
+                    if len(rows) >= 2:
                         second_level_headers = rows[1].find_all('th')
                         second_level_texts = [header.get_text(strip=True) for header in second_level_headers]
-                        logging.info(f"Таблица {i+1} заголовки второго уровня: {second_level_texts}")
                         
-                        # Находим индекс колонки "Ставка"
                         if 'Ставка' in second_level_texts:
                             rate_col_index = second_level_texts.index('Ставка')
                             
-                            # Ищем первую строку с данными (пропускаем два уровня заголовков)
                             for row in rows[2:]:
                                 cells = row.find_all('td')
                                 if len(cells) > rate_col_index:
@@ -185,20 +144,16 @@ class BondsFilter:
     def process_bond(self, bond_data):
         """Обработка одной облигации"""
         try:
-            # Переход на страницу облигации
             self.driver.get(bond_data['bond_link'])
-            time.sleep(3)  # Ожидание загрузки страницы
+            time.sleep(3)
             
-            # Получение HTML страницы
             page_source = self.driver.page_source
             soup = BeautifulSoup(page_source, 'html.parser')
             
-            # Сбор данных
             isin = self.get_isin(soup)
             has_offer = self.check_offer(soup)
             coupon_rate = self.get_coupon_rate(soup)
             
-            # Проверка критериев
             if has_offer:
                 logging.info(f"Облигация {bond_data['bond_name']} отбракована: имеет оферту")
                 return None
@@ -211,7 +166,6 @@ class BondsFilter:
                 logging.info(f"Облигация {bond_data['bond_name']} отбракована: ставка купона {coupon_rate}% ниже минимальной {self.min_coupon_rate}%")
                 return None
             
-            # Формирование результата в новом формате
             result = {
                 'Название облигации': bond_data['bond_name'],
                 'ISIN': isin,
@@ -231,7 +185,6 @@ class BondsFilter:
     def run(self):
         """Основной метод выполнения"""
         try:
-            # Чтение входного файла
             if not os.path.exists(self.input_file):
                 logging.error(f"Входной файл не найден: {self.input_file}")
                 return
@@ -239,11 +192,6 @@ class BondsFilter:
             df = pd.read_csv(self.input_file, sep=';', encoding='utf-8')
             logging.info(f"Прочитано {len(df)} облигаций из файла {self.input_file}")
             
-            # Берем только первую облигацию для тестирования
-            df = df.head(1)
-            logging.info("Тестируем только первую облигацию")
-            
-            # Обработка облигаций
             filtered_bonds = []
             for _, row in df.iterrows():
                 bond_data = {
@@ -257,7 +205,6 @@ class BondsFilter:
                 if processed_bond:
                     filtered_bonds.append(processed_bond)
             
-            # Сохранение результатов
             if filtered_bonds:
                 result_df = pd.DataFrame(filtered_bonds)
                 result_df.to_csv(self.output_file, sep=';', index=False, encoding='utf-8')
@@ -273,5 +220,5 @@ class BondsFilter:
 
 if __name__ == "__main__":
     logging.info("Запуск скрипта для фильтрации облигаций")
-    filter = BondsFilter(test_mode=True)  # Включаем тестовый режим
+    filter = BondsFilter(test_mode=False)
     filter.run() 
